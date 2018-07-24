@@ -3,7 +3,7 @@
 <body>
 <div><input id="file" type="file"/> <button id="stop">Stop</button> <button id="replay">Replay</button></div>
 <br>
-<div><input id="bypass" type="range" min="0" max="100" value="0"/>Bypass</div>
+<div><input id="bypass" type="range" min="0" max="100" value="0"/>Bypass (<input id="original" type="checkbox"/>full bypass)</div>
 <br>
 <div><input id="crossoverhigh" type="range" min="0" max="22050" value="22050">Crossover (lowpass)</div>
 <div><input id="crossoverlow" type="range" min="0" max="22050" value="0">Crossover (highpass)</div>
@@ -19,11 +19,14 @@
 <div><input id="postcuthigh" type="range" min="0" max="22050" value="3000"/>Postcut (lowpass)</div>
 <div><input id="postcutlow" type="range" min="0" max="22050" value="0"/>Postcut (highpass)</div>
 <style>
-input[type=range] {
-	width: 500px;
-}
 input {
 	vertical-align: middle;
+}
+input[disabled] {
+	opacity: 0.5;
+}
+input[type=range] {
+	width: 500px;
 }
 </style>
 <script>
@@ -167,6 +170,16 @@ document.getElementById('drive').addEventListener('input', e => overdrive.drive 
 document.getElementById('postcuthigh').addEventListener('input', e => overdrive.postcuthigh = +e.target.value);
 document.getElementById('postcutlow').addEventListener('input', e => overdrive.postcutlow = +e.target.value);
 
+document.getElementById('original').addEventListener('change', e => {
+	const bypass = document.getElementById('bypass');
+	if (e.target.checked) {
+		overdrive.bypass = 1;
+		bypass.disabled = true;
+	} else {
+		overdrive.bypass = +bypass.value / 100;
+		bypass.disabled = false;
+	}
+});
 document.getElementById('eleven').addEventListener('change', e =>
 	document.getElementById('drive').max = e.target.checked ? 1100 : 100);
 
