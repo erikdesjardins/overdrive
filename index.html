@@ -1,8 +1,21 @@
 <html>
-<head></head>
+<head>
+<style>
+	input {
+		vertical-align: middle;
+	}
+	input[disabled] {
+		opacity: 0.5;
+	}
+	input[type=range] {
+		width: 500px;
+	}
+</style>
+</head>
 <body>
-<div><input id="file" type="file"/> <button id="stop">Stop</button> <button id="replay">Replay</button></div>
+<div><input id="file" type="file"/> <button id="stopplay">Stop</button> <button id="replay">Replay</button></div>
 <br>
+<div id="options">
 <div><input id="bypass" type="range" min="0" max="100" value="0"/>Bypass (<input id="original" type="checkbox"/>full bypass)</div>
 <br>
 <div><input id="crossoverhigh" type="range" min="0" max="22050" value="22050">Crossover (lowpass)</div>
@@ -18,17 +31,7 @@
 <br>
 <div><input id="postcuthigh" type="range" min="0" max="22050" value="3000"/>Postcut (lowpass)</div>
 <div><input id="postcutlow" type="range" min="0" max="22050" value="0"/>Postcut (highpass)</div>
-<style>
-input {
-	vertical-align: middle;
-}
-input[disabled] {
-	opacity: 0.5;
-}
-input[type=range] {
-	width: 500px;
-}
-</style>
+</div>
 <script>
 class Overdrive {
 	constructor(context) {
@@ -50,6 +53,8 @@ class Overdrive {
 		this._ws = context.createWaveShaper();
 		this._postcuthigh = context.createBiquadFilter(); this._postcuthigh.type = 'lowpass';
 		this._postcutlow = context.createBiquadFilter(); this._postcutlow.type = 'highpass';
+
+		this._drive = -1;
 
 		this.input.connect(this._bypassAround);
 		this.input.connect(this._bypassThrough);
@@ -74,67 +79,65 @@ class Overdrive {
 		this._crossoverHighAround.connect(this.output);
 		this._bypassAround.connect(this.output);
 
-		this.bypass = 0;
-		this.crossoverlow = 0;
-		this.crossoverhigh = 22050;
-		this.colortype = 0;
-		this.color = 800;
-		this.narrowness = 1;
-		this.preband = 0.5;
-		this.drive = 0.5;
-		this.postcuthigh = 3000;
-		this.postcutlow = 0;
+		this.update();
 	}
 
-	get bypass() { return this._bypassAround.gain.value; }
-	set bypass(value) {
+	update() {
+		this.bypass(+bypass.value / 100);
+		this.crossoverlow(+crossoverlow.value);
+		this.crossoverhigh(+crossoverhigh.value);
+		this.colortype(+colortype.value / 100);
+		this.color(+color.value);
+		this.narrowness(+narrowness.value / 100);
+		this.preband(+preband.value / 100);
+		this.drive(+drive.value / 100);
+		this.postcuthigh(+postcuthigh.value);
+		this.postcutlow(+postcutlow.value);
+	}
+
+	bypass(value) {
 		this._bypassAround.gain.setValueAtTime(value, 0);
 		this._bypassThrough.gain.setValueAtTime(1 - value, 0);
 	}
 
-	get crossoverlow() { return this._crossoverLowThrough.frequency.value; }
-	set crossoverlow(value) {
+	crossoverlow(value) {
 		this._crossoverLowAround.frequency.setValueAtTime(value, 0);
 		this._crossoverLowThrough.frequency.setValueAtTime(value, 0);
 	}
 
-	get crossoverhigh() { return this._crossoverHighThrough.frequency.value; }
-	set crossoverhigh(value) {
+	crossoverhigh(value) {
 		this._crossoverHighThrough.frequency.setValueAtTime(value, 0);
 		this._crossoverHighAround.frequency.setValueAtTime(value, 0);
 	}
 
-	get colortype() { return this._colorBandpass.gain.value; }
-	set colortype(value) {
+	colortype(value) {
 		this._colorBandpass.gain.setValueAtTime(value, 0);
 		this._colorLowpass.gain.setValueAtTime(1 - value, 0);
 	}
 
-	get color() { return this._bandpass.frequency.value; }
-	set color(value) {
+	color(value) {
 		this._bandpassLowpass.frequency.setValueAtTime(value, 0);
 		this._bandpass.frequency.setValueAtTime(value, 0);
 	}
 
-	get narrowness() { return this._bandpass.Q.value; }
-	set narrowness(value) {
+	narrowness(value) {
 		this._bandpass.Q.setValueAtTime(value, 0);
 	}
 
-	get preband() { return this._bpWet.gain.value; }
-	set preband(value) {
+	preband(value) {
 		this._bpWet.gain.setValueAtTime(value, 0);
 		this._bpDry.gain.setValueAtTime(1 - value, 0);
 	}
 
-	get drive() { return this._drive; }
-	set drive(value) {
+	drive(value) {
+		if (value === this._drive) return;
+		this._drive = value;
+
 		const k = value * 100;
 		const n = 22050;
 		const curve = new Float32Array(n);
 		const deg = Math.PI / 180;
 
-		this._drive = value;
 		for (let i = 0; i < n; i++) {
 			const x = i * 2 / n - 1;
 			curve[i] = (3 + k) * x * 20 * deg / (Math.PI + k * Math.abs(x));
@@ -142,48 +145,18 @@ class Overdrive {
 		this._ws.curve = curve;
 	}
 
-	get postcuthigh() { return this._postcuthigh.frequency.value; }
-	set postcuthigh(value) {
+	postcuthigh(value) {
 		this._postcuthigh.frequency.setValueAtTime(value, 0);
 	}
 
-	get postcutlow() { return this._postcutlow.frequency.value; }
-	set postcutlow(value) {
+	postcutlow(value) {
 		this._postcutlow.frequency.setValueAtTime(value, 0);
 	}
 }
 
-let overdrive, source, buffer;
+let overdrive, source;
 
-document.getElementById('replay').addEventListener('click', () =>
-	document.getElementById('file').dispatchEvent(new Event('change')));
-document.getElementById('stop').addEventListener('click', () => source.stop(0));
-
-document.getElementById('bypass').addEventListener('input', e => overdrive.bypass = +e.target.value / 100);
-document.getElementById('crossoverlow').addEventListener('input', e => overdrive.crossoverlow = +e.target.value);
-document.getElementById('crossoverhigh').addEventListener('input', e => overdrive.crossoverhigh = +e.target.value);
-document.getElementById('colortype').addEventListener('input', e => overdrive.colortype = +e.target.value / 100);
-document.getElementById('color').addEventListener('input', e => overdrive.color = +e.target.value);
-document.getElementById('narrowness').addEventListener('input', e => overdrive.narrowness = +e.target.value / 100);
-document.getElementById('preband').addEventListener('input', e => overdrive.preband = +e.target.value / 100);
-document.getElementById('drive').addEventListener('input', e => overdrive.drive = +e.target.value / 100);
-document.getElementById('postcuthigh').addEventListener('input', e => overdrive.postcuthigh = +e.target.value);
-document.getElementById('postcutlow').addEventListener('input', e => overdrive.postcutlow = +e.target.value);
-
-document.getElementById('original').addEventListener('change', e => {
-	const bypass = document.getElementById('bypass');
-	if (e.target.checked) {
-		overdrive.bypass = 1;
-		bypass.disabled = true;
-	} else {
-		overdrive.bypass = +bypass.value / 100;
-		bypass.disabled = false;
-	}
-});
-document.getElementById('eleven').addEventListener('change', e =>
-	document.getElementById('drive').max = e.target.checked ? 1100 : 100);
-
-document.getElementById('file').addEventListener('change', e => {
+file.addEventListener('change', e => {
 	const context = new AudioContext();
 	overdrive = new Overdrive(context);
 
@@ -191,19 +164,35 @@ document.getElementById('file').addEventListener('change', e => {
 	if (!file) return;
 	const reader = new FileReader();
 	reader.onload = () => {
-		context.decodeAudioData(reader.result, audioBuffer => {
+		context.decodeAudioData(reader.result).then(audioBuffer => {
 			if (source) source.stop(0);
 
 			source = context.createBufferSource();
-			buffer = audioBuffer
-			source.buffer = buffer;
+			source.buffer = audioBuffer;
 			source.connect(overdrive.input);
 			overdrive.output.connect(context.destination);
 			source.start(0);
 		});
-	}
+	};
 	reader.readAsArrayBuffer(file);
 });
+
+replay.addEventListener('click', () => file.dispatchEvent(new Event('change')));
+
+stopplay.addEventListener('click', () => source.stop(0));
+
+options.addEventListener('input', () => overdrive.update());
+
+original.addEventListener('change', e => {
+	if (e.target.checked) {
+		overdrive.bypass(1);
+		bypass.disabled = true;
+	} else {
+		bypass.disabled = false;
+	}
+});
+
+eleven.addEventListener('change', e => drive.max = e.target.checked ? 1100 : 100);
 </script>
 </body>
 </html>
