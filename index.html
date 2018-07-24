@@ -5,12 +5,13 @@
 <button id="stop">Stop</button>
 <button id="replay">Replay</button>
 <div><input id="bypass" type="range" min="0" max="100" value="0"/>Bypass</div>
-<div><input id="crossover" type="range" min="0" max="22050" value="0">Crossover (highpass)</div>
-<div><input id="colortype" type="range" min="0" max="100" value="0"/>Color type (lowpass [classic]/bandpass)</div>
+<div><input id="crossover" type="range" min="0" max="22050" value="0">Crossover (low bypass)</div>
+<div><input id="colortype" type="range" min="0" max="100" value="0"/>Color type (lowpass/bandpass)</div>
 <div><input id="color" type="range" min="0" max="22050" value="800"/>Color</div>
 <div><input id="narrowness" type="range" min="1" max="1000" value="100"/>Color narrowness (bandpass only)</div>
 <div><input id="preband" type="range" min="0" max="100" value="50"/>Preband (dry/wet)</div>
-<div><input id="drive" type="range" min="0" max="100" value="50"/>Drive</div>
+<div><input id="drive" type="range" min="0" max="100" value="50"/>Drive
+(<input id="eleven" type="checkbox"><label>up to 11</label></input>)</div>
 <div><input id="postcut" type="range" min="0" max="22050" value="3000"/>Postcut (lowpass)</div>
 <div><input id="posttrim" type="range" min="0" max="22050" value="0"/>Posttrim (highpass)</div>
 <style>
@@ -132,7 +133,8 @@ class Overdrive {
 
 let overdrive, source, buffer;
 
-document.getElementById('replay').addEventListener('click', () => document.getElementById('file').dispatchEvent(new Event('change')));
+document.getElementById('replay').addEventListener('click', () =>
+	document.getElementById('file').dispatchEvent(new Event('change')));
 document.getElementById('stop').addEventListener('click', () => source.stop(0));
 
 document.getElementById('bypass').addEventListener('input', e => overdrive.bypass = +e.target.value / 100);
@@ -144,6 +146,9 @@ document.getElementById('preband').addEventListener('input', e => overdrive.preb
 document.getElementById('drive').addEventListener('input', e => overdrive.drive = +e.target.value / 100);
 document.getElementById('postcut').addEventListener('input', e => overdrive.postcut = +e.target.value);
 document.getElementById('posttrim').addEventListener('input', e => overdrive.posttrim = +e.target.value);
+
+document.getElementById('eleven').addEventListener('change', e =>
+	document.getElementById('drive').max = e.target.checked ? 1100 : 100);
 
 document.getElementById('file').addEventListener('change', e => {
 	const context = new AudioContext();
