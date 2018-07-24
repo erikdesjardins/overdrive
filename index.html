@@ -1,19 +1,23 @@
 <html>
 <head></head>
 <body>
-<input id="file" type="file"/>
-<button id="stop">Stop</button>
-<button id="replay">Replay</button>
+<div><input id="file" type="file"/> <button id="stop">Stop</button> <button id="replay">Replay</button></div>
+<br>
 <div><input id="bypass" type="range" min="0" max="100" value="0"/>Bypass</div>
-<div><input id="crossover" type="range" min="0" max="22050" value="0">Crossover (low bypass)</div>
+<br>
+<div><input id="crossoverhigh" type="range" min="0" max="22050" value="22050">Crossover (lowpass)</div>
+<div><input id="crossoverlow" type="range" min="0" max="22050" value="0">Crossover (highpass)</div>
+<br>
 <div><input id="colortype" type="range" min="0" max="100" value="0"/>Color type (lowpass/bandpass)</div>
 <div><input id="color" type="range" min="0" max="22050" value="800"/>Color</div>
 <div><input id="narrowness" type="range" min="1" max="1000" value="100"/>Color narrowness (bandpass only)</div>
+<br>
 <div><input id="preband" type="range" min="0" max="100" value="50"/>Preband (dry/wet)</div>
-<div><input id="drive" type="range" min="0" max="100" value="50"/>Drive
-(<input id="eleven" type="checkbox"><label>up to 11</label></input>)</div>
-<div><input id="postcut" type="range" min="0" max="22050" value="3000"/>Postcut (lowpass)</div>
-<div><input id="posttrim" type="range" min="0" max="22050" value="0"/>Posttrim (highpass)</div>
+<br>
+<div><input id="drive" type="range" min="0" max="100" value="50"/>Drive (<input id="eleven" type="checkbox"/>up to 11)</div>
+<br>
+<div><input id="postcuthigh" type="range" min="0" max="22050" value="3000"/>Postcut (lowpass)</div>
+<div><input id="postcutlow" type="range" min="0" max="22050" value="0"/>Postcut (highpass)</div>
 <style>
 input[type=range] {
 	width: 500px;
@@ -27,8 +31,10 @@ class Overdrive {
 
 		this._bypassAround = context.createGain();
 		this._bypassThrough = context.createGain();
-		this._crossoverLow = context.createBiquadFilter(); this._crossoverLow.type = 'lowpass';
-		this._crossoverHigh = context.createBiquadFilter(); this._crossoverHigh.type = 'highpass';
+		this._crossoverHighThrough = context.createBiquadFilter(); this._crossoverHighThrough.type = 'lowpass';
+		this._crossoverHighAround = context.createBiquadFilter(); this._crossoverHighAround.type = 'highpass';
+		this._crossoverLowAround = context.createBiquadFilter(); this._crossoverLowAround.type = 'lowpass';
+		this._crossoverLowThrough = context.createBiquadFilter(); this._crossoverLowThrough.type = 'highpass';
 		this._colorLowpass = context.createGain();
 		this._colorBandpass = context.createGain();
 		this._bandpassLowpass = context.createBiquadFilter(); this._bandpassLowpass.type = 'lowpass';
@@ -36,15 +42,17 @@ class Overdrive {
 		this._bpWet = context.createGain();
 		this._bpDry = context.createGain();
 		this._ws = context.createWaveShaper();
-		this._lowpass = context.createBiquadFilter(); this._lowpass.type = 'lowpass';
-		this._finalHighpass = context.createBiquadFilter(); this._finalHighpass.type = 'highpass';
+		this._postcuthigh = context.createBiquadFilter(); this._postcuthigh.type = 'lowpass';
+		this._postcutlow = context.createBiquadFilter(); this._postcutlow.type = 'highpass';
 
 		this.input.connect(this._bypassAround);
 		this.input.connect(this._bypassThrough);
-		this._bypassThrough.connect(this._crossoverLow);
-		this._bypassThrough.connect(this._crossoverHigh);
-		this._crossoverHigh.connect(this._colorLowpass);
-		this._crossoverHigh.connect(this._colorBandpass);
+		this._bypassThrough.connect(this._crossoverHighThrough);
+		this._bypassThrough.connect(this._crossoverHighAround);
+		this._crossoverHighThrough.connect(this._crossoverLowAround);
+		this._crossoverHighThrough.connect(this._crossoverLowThrough);
+		this._crossoverLowThrough.connect(this._colorLowpass);
+		this._crossoverLowThrough.connect(this._colorBandpass);
 		this._colorLowpass.connect(this._bandpassLowpass);
 		this._colorBandpass.connect(this._bandpass);
 		this._bandpassLowpass.connect(this._bpWet);
@@ -52,22 +60,24 @@ class Overdrive {
 		this._bandpass.connect(this._bpWet);
 		this._bandpass.connect(this._bpDry);
 		this._bpWet.connect(this._ws);
-		this._ws.connect(this._lowpass);
-		this._lowpass.connect(this._finalHighpass);
-		this._finalHighpass.connect(this.output);
+		this._ws.connect(this._postcuthigh);
+		this._postcuthigh.connect(this._postcutlow);
+		this._postcutlow.connect(this.output);
 		this._bpDry.connect(this.output);
-		this._crossoverLow.connect(this.output);
+		this._crossoverLowAround.connect(this.output);
+		this._crossoverHighAround.connect(this.output);
 		this._bypassAround.connect(this.output);
 
 		this.bypass = 0;
-		this.crossover = 0;
+		this.crossoverlow = 0;
+		this.crossoverhigh = 22050;
 		this.colortype = 0;
 		this.color = 800;
 		this.narrowness = 1;
 		this.preband = 0.5;
 		this.drive = 0.5;
-		this.postcut = 3000;
-		this.posttrim = 0;
+		this.postcuthigh = 3000;
+		this.postcutlow = 0;
 	}
 
 	get bypass() { return this._bypassAround.gain.value; }
@@ -76,10 +86,16 @@ class Overdrive {
 		this._bypassThrough.gain.setValueAtTime(1 - value, 0);
 	}
 
-	get crossover() { return this._crossoverHigh.frequency.value; }
-	set crossover(value) {
-		this._crossoverLow.frequency.setValueAtTime(value, 0);
-		this._crossoverHigh.frequency.setValueAtTime(value, 0);
+	get crossoverlow() { return this._crossoverLowThrough.frequency.value; }
+	set crossoverlow(value) {
+		this._crossoverLowAround.frequency.setValueAtTime(value, 0);
+		this._crossoverLowThrough.frequency.setValueAtTime(value, 0);
+	}
+
+	get crossoverhigh() { return this._crossoverHighThrough.frequency.value; }
+	set crossoverhigh(value) {
+		this._crossoverHighThrough.frequency.setValueAtTime(value, 0);
+		this._crossoverHighAround.frequency.setValueAtTime(value, 0);
 	}
 
 	get colortype() { return this._colorBandpass.gain.value; }
@@ -120,14 +136,14 @@ class Overdrive {
 		this._ws.curve = curve;
 	}
 
-	get postcut() { return this._lowpass.frequency.value; }
-	set postcut(value) {
-		this._lowpass.frequency.setValueAtTime(value, 0);
+	get postcuthigh() { return this._postcuthigh.frequency.value; }
+	set postcuthigh(value) {
+		this._postcuthigh.frequency.setValueAtTime(value, 0);
 	}
 
-	get posttrim() { return this._finalHighpass.frequency.value; }
-	set posttrim(value) {
-		this._finalHighpass.frequency.setValueAtTime(value, 0);
+	get postcutlow() { return this._postcutlow.frequency.value; }
+	set postcutlow(value) {
+		this._postcutlow.frequency.setValueAtTime(value, 0);
 	}
 }
 
@@ -138,14 +154,15 @@ document.getElementById('replay').addEventListener('click', () =>
 document.getElementById('stop').addEventListener('click', () => source.stop(0));
 
 document.getElementById('bypass').addEventListener('input', e => overdrive.bypass = +e.target.value / 100);
-document.getElementById('crossover').addEventListener('input', e => overdrive.crossover = +e.target.value);
+document.getElementById('crossoverlow').addEventListener('input', e => overdrive.crossoverlow = +e.target.value);
+document.getElementById('crossoverhigh').addEventListener('input', e => overdrive.crossoverhigh = +e.target.value);
 document.getElementById('colortype').addEventListener('input', e => overdrive.colortype = +e.target.value / 100);
 document.getElementById('color').addEventListener('input', e => overdrive.color = +e.target.value);
 document.getElementById('narrowness').addEventListener('input', e => overdrive.narrowness = +e.target.value / 100);
 document.getElementById('preband').addEventListener('input', e => overdrive.preband = +e.target.value / 100);
 document.getElementById('drive').addEventListener('input', e => overdrive.drive = +e.target.value / 100);
-document.getElementById('postcut').addEventListener('input', e => overdrive.postcut = +e.target.value);
-document.getElementById('posttrim').addEventListener('input', e => overdrive.posttrim = +e.target.value);
+document.getElementById('postcuthigh').addEventListener('input', e => overdrive.postcuthigh = +e.target.value);
+document.getElementById('postcutlow').addEventListener('input', e => overdrive.postcutlow = +e.target.value);
 
 document.getElementById('eleven').addEventListener('change', e =>
 	document.getElementById('drive').max = e.target.checked ? 1100 : 100);
