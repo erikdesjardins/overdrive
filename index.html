@@ -1,45 +1,72 @@
 <html>
 <head></head>
 <body>
-<input type="file"></input><span id="playing"></span>
+<input id="file" type="file"/>
+<button id="stop">Stop</button>
+<button id="replay">Replay</button>
 <div><input id="bypass" type="range" min="0" max="100" value="0"/>Bypass</div>
+<div><input id="crossover" type="range" min="0" max="22050" value="0">Crossover (highpass)</div>
+<div><input id="colortype" type="range" min="0" max="100" value="0"/>Color type (lowpass [classic]/bandpass)</div>
 <div><input id="color" type="range" min="0" max="22050" value="800"/>Color</div>
+<div><input id="narrowness" type="range" min="1" max="1000" value="100"/>Color narrowness (bandpass only)</div>
 <div><input id="preband" type="range" min="0" max="100" value="50"/>Preband (dry/wet)</div>
 <div><input id="drive" type="range" min="0" max="100" value="50"/>Drive</div>
 <div><input id="postcut" type="range" min="0" max="22050" value="3000"/>Postcut (lowpass)</div>
+<div><input id="posttrim" type="range" min="0" max="22050" value="0"/>Posttrim (highpass)</div>
+<style>
+input[type=range] {
+	width: 500px;
+}
+</style>
 <script>
 class Overdrive {
 	constructor(context) {
 		this.input = context.createGain();
 		this.output = context.createGain();
 
-		// Internal AudioNodes
 		this._bypassAround = context.createGain();
 		this._bypassThrough = context.createGain();
-		this._bandpass = context.createBiquadFilter();
+		this._crossoverLow = context.createBiquadFilter(); this._crossoverLow.type = 'lowpass';
+		this._crossoverHigh = context.createBiquadFilter(); this._crossoverHigh.type = 'highpass';
+		this._colorLowpass = context.createGain();
+		this._colorBandpass = context.createGain();
+		this._bandpassLowpass = context.createBiquadFilter(); this._bandpassLowpass.type = 'lowpass';
+		this._bandpass = context.createBiquadFilter(); this._bandpass.type = 'bandpass';
 		this._bpWet = context.createGain();
 		this._bpDry = context.createGain();
 		this._ws = context.createWaveShaper();
-		this._lowpass = context.createBiquadFilter();
+		this._lowpass = context.createBiquadFilter(); this._lowpass.type = 'lowpass';
+		this._finalHighpass = context.createBiquadFilter(); this._finalHighpass.type = 'highpass';
 
-		// AudioNode graph routing
 		this.input.connect(this._bypassAround);
 		this.input.connect(this._bypassThrough);
-		this._bypassThrough.connect(this._bandpass);
+		this._bypassThrough.connect(this._crossoverLow);
+		this._bypassThrough.connect(this._crossoverHigh);
+		this._crossoverHigh.connect(this._colorLowpass);
+		this._crossoverHigh.connect(this._colorBandpass);
+		this._colorLowpass.connect(this._bandpassLowpass);
+		this._colorBandpass.connect(this._bandpass);
+		this._bandpassLowpass.connect(this._bpWet);
+		this._bandpassLowpass.connect(this._bpDry);
 		this._bandpass.connect(this._bpWet);
 		this._bandpass.connect(this._bpDry);
 		this._bpWet.connect(this._ws);
 		this._ws.connect(this._lowpass);
-		this._lowpass.connect(this.output);
+		this._lowpass.connect(this._finalHighpass);
+		this._finalHighpass.connect(this.output);
 		this._bpDry.connect(this.output);
+		this._crossoverLow.connect(this.output);
 		this._bypassAround.connect(this.output);
 
-		// Defaults
 		this.bypass = 0;
+		this.crossover = 0;
+		this.colortype = 0;
 		this.color = 800;
-		this.preBand = 0.5;
+		this.narrowness = 1;
+		this.preband = 0.5;
 		this.drive = 0.5;
-		this.postCut = 3000;
+		this.postcut = 3000;
+		this.posttrim = 0;
 	}
 
 	get bypass() { return this._bypassAround.gain.value; }
@@ -48,13 +75,31 @@ class Overdrive {
 		this._bypassThrough.gain.setValueAtTime(1 - value, 0);
 	}
 
+	get crossover() { return this._crossoverHigh.frequency.value; }
+	set crossover(value) {
+		this._crossoverLow.frequency.setValueAtTime(value, 0);
+		this._crossoverHigh.frequency.setValueAtTime(value, 0);
+	}
+
+	get colortype() { return this._colorBandpass.gain.value; }
+	set colortype(value) {
+		this._colorBandpass.gain.setValueAtTime(value, 0);
+		this._colorLowpass.gain.setValueAtTime(1 - value, 0);
+	}
+
 	get color() { return this._bandpass.frequency.value; }
 	set color(value) {
+		this._bandpassLowpass.frequency.setValueAtTime(value, 0);
 		this._bandpass.frequency.setValueAtTime(value, 0);
 	}
 
-	get preBand() { return this._bpWet.gain.value; }
-	set preBand(value) {
+	get narrowness() { return this._bandpass.Q.value; }
+	set narrowness(value) {
+		this._bandpass.Q.setValueAtTime(value, 0);
+	}
+
+	get preband() { return this._bpWet.gain.value; }
+	set preband(value) {
 		this._bpWet.gain.setValueAtTime(value, 0);
 		this._bpDry.gain.setValueAtTime(1 - value, 0);
 	}
@@ -74,21 +119,33 @@ class Overdrive {
 		this._ws.curve = curve;
 	}
 
-	get postCut() { return this._lowpass.frequency.value; }
-	set postCut(value) {
+	get postcut() { return this._lowpass.frequency.value; }
+	set postcut(value) {
 		this._lowpass.frequency.setValueAtTime(value, 0);
+	}
+
+	get posttrim() { return this._finalHighpass.frequency.value; }
+	set posttrim(value) {
+		this._finalHighpass.frequency.setValueAtTime(value, 0);
 	}
 }
 
-let overdrive, source;
+let overdrive, source, buffer;
+
+document.getElementById('replay').addEventListener('click', () => document.getElementById('file').dispatchEvent(new Event('change')));
+document.getElementById('stop').addEventListener('click', () => source.stop(0));
 
 document.getElementById('bypass').addEventListener('input', e => overdrive.bypass = +e.target.value / 100);
+document.getElementById('crossover').addEventListener('input', e => overdrive.crossover = +e.target.value);
+document.getElementById('colortype').addEventListener('input', e => overdrive.colortype = +e.target.value / 100);
 document.getElementById('color').addEventListener('input', e => overdrive.color = +e.target.value);
-document.getElementById('preband').addEventListener('input', e => overdrive.preBand = +e.target.value / 100);
+document.getElementById('narrowness').addEventListener('input', e => overdrive.narrowness = +e.target.value / 100);
+document.getElementById('preband').addEventListener('input', e => overdrive.preband = +e.target.value / 100);
 document.getElementById('drive').addEventListener('input', e => overdrive.drive = +e.target.value / 100);
-document.getElementById('postcut').addEventListener('input', e => overdrive.postCut = +e.target.value);
+document.getElementById('postcut').addEventListener('input', e => overdrive.postcut = +e.target.value);
+document.getElementById('posttrim').addEventListener('input', e => overdrive.posttrim = +e.target.value);
 
-document.querySelector('input').addEventListener('change', e => {
+document.getElementById('file').addEventListener('change', e => {
 	const context = new AudioContext();
 	overdrive = new Overdrive(context);
 
@@ -99,11 +156,9 @@ document.querySelector('input').addEventListener('change', e => {
 		context.decodeAudioData(reader.result, audioBuffer => {
 			if (source) source.stop(0);
 
-			document.getElementById('playing').textContent = file.name;
-			document.querySelector('input').value = null;
-
 			source = context.createBufferSource();
-			source.buffer = audioBuffer;
+			buffer = audioBuffer
+			source.buffer = buffer;
 			source.connect(overdrive.input);
 			overdrive.output.connect(context.destination);
 			source.start(0);
