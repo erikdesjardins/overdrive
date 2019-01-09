@@ -160,6 +160,7 @@ let overdrive, source;
 file.addEventListener('change', e => {
 	const context = new AudioContext();
 	overdrive = new Overdrive(context);
+	overdrive.output.connect(context.destination);
 
 	const file = e.target.files[0];
 	if (!file) return;
@@ -171,7 +172,6 @@ file.addEventListener('change', e => {
 			source = context.createBufferSource();
 			source.buffer = audioBuffer;
 			source.connect(overdrive.input);
-			overdrive.output.connect(context.destination);
 			source.start(0);
 		});
 	};
