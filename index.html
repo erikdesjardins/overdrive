@@ -188,11 +188,9 @@ file.addEventListener('change', async e => {
 	source.connect(overdrive.input);
 
 	// prepare media recorder
-	const recorder = new MediaRecorder(destination.stream);
 	saved.src = null;
-	const chunks = [];
-	recorder.ondataavailable = e => chunks.push(e.data);
-	recorder.onstop = () => saved.src = URL.createObjectURL(new Blob(chunks, { 'type' : 'audio/ogg; codecs=opus' }));
+	const recorder = new MediaRecorder(destination.stream);
+	recorder.ondataavailable = e => saved.src = URL.createObjectURL(e.data);
 	source.onended = () => recorder.stop();
 
 	recorder.start();
